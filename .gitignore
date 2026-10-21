@@ -1,0 +1,47 @@
+# Android and Gradle
+.gradle/
+build/
+*/build/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Android Studio and IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Kotlin
+.kotlin/
+
+# Signing material and secrets
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+
+# Generated output
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+output.json
+
+# The native library is built from app/src/main/cpp with CMake
+app/src/main/assets/libvmfix/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# Operating system files
+desktop.ini

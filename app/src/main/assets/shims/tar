@@ -1,0 +1,26 @@
+#!/data/data/com.termux/files/usr/bin/sh
+P=/data/data/com.termux/files/usr/bin
+
+mode=other
+for a in "$@"; do
+    case "$a" in
+        --extract|--get) mode=extract; break ;;
+    esac
+done
+
+if [ "$mode" = other ]; then
+    for a in "$@"; do
+        case "$a" in
+            --*) continue ;;          # long option, not a flag cluster
+            -?*)                      # short flag cluster: look for a bare x
+                case "$a" in
+                    *x*) mode=extract; break ;;
+                esac ;;
+        esac
+    done
+fi
+
+if [ "$mode" = extract ]; then
+    exec "$P/tar.real" -m "$@"
+fi
+exec "$P/tar.real" "$@"

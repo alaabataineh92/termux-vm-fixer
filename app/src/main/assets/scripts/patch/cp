@@ -1,0 +1,14 @@
+#!/data/data/com.termux/files/usr/bin/sh
+P=/data/data/com.termux/files/usr/bin
+args=""
+for a in "$@"; do
+    case "$a" in
+        -a) args="$args -dR" ;;
+        -p|--preserve|--preserve=*) : ;;
+        -*) rest=$(printf '%s' "$a" | sed 's/^-//; s/[ap]//g')
+            [ -n "$rest" ] && args="$args -$rest" ;;
+        *) esc=$(printf '%s' "$a" | sed "s/'/'\\''/g")
+           args="$args '$esc'" ;;
+    esac
+done
+eval "exec $P/coreutils --coreutils-prog=cp $args"

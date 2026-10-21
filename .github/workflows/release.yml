@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to release, for example v1.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      # The library is built from cpp/ with CMake, so the toolchain has to be
+      # there. The versions are read from the build file to keep them in step.
+      - name: Install the NDK and CMake
+        run: |
+          NDK_VERSION=$(grep -oP 'val ndkVersion = "\K[^"]+' app/build.gradle.kts)
+          CMAKE_VERSION=$(grep -oP 'val cmakeVersion = "\K[^"]+' app/build.gradle.kts)
+          echo "Installing NDK $NDK_VERSION and CMake $CMAKE_VERSION"
+          sdkmanager "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::The RELEASE_KEYSTORE_BASE64 secret is not set."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > release.jks
+          echo "release.jks restored"
+
+      - name: Build the release APK
+        env:
+          RELEASE_STORE_FILE: release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          RELEASE_VERSION_CODE: ${{ github.run_number }}
+        run: ./gradlew :app:assembleRelease
+
+      - name: Check the signature
+        run: |
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" \
+            verify --print-certs --min-sdk-version 22 \
+            app/build/outputs/apk/release/app-release.apk
+
+      - name: Write the checksums
+        run: |
+          cd app/build/outputs/apk/release
+          sha256sum *.apk > checksums.txt
+          cat checksums.txt
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/release/checksums.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true

@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      # The library is built from cpp/ with CMake, so the toolchain has to be
+      # there. The versions are read from the build file to keep them in step.
+      - name: Install the NDK and CMake
+        run: |
+          NDK_VERSION=$(grep -oP 'val ndkVersion = "\K[^"]+' app/build.gradle.kts)
+          CMAKE_VERSION=$(grep -oP 'val cmakeVersion = "\K[^"]+' app/build.gradle.kts)
+          echo "Installing NDK $NDK_VERSION and CMake $CMAKE_VERSION"
+          sdkmanager "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Check the Gradle wrapper
+        run: ./gradlew --version
+
+      # Built on its own first, so a broken CMake setup is reported clearly
+      # instead of turning up as a missing asset.
+      - name: Build the native library
+        run: ./gradlew :app:buildCMakeDebug
+
+      - name: Lint
+        run: ./gradlew :app:lintDebug
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest
+
+      - name: Build the debug APK
+        run: ./gradlew :app:assembleDebug
+
+      # The release build is unsigned here, but it still runs R8, so a broken
+      # ProGuard rule is caught before a release is ever cut.
+      - name: Build the release APK
+        run: ./gradlew :app:assembleRelease
+
+      - name: Upload the debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
