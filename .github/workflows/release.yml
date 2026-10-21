@@ -35,17 +35,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Read the toolchain versions
+        id: toolchain
+        run: |
+          echo "ndk=$(grep -oP 'val ndkVersion = "\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+          echo "cmake=$(grep -oP 'val cmakeVersion = "\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+
       - name: Set up the Android SDK
         uses: android-actions/setup-android@v3
-
-      # The library is built from cpp/ with CMake, so the toolchain has to be
-      # there. The versions are read from the build file to keep them in step.
-      - name: Install the NDK and CMake
-        run: |
-          NDK_VERSION=$(grep -oP 'val ndkVersion = "\K[^"]+' app/build.gradle.kts)
-          CMAKE_VERSION=$(grep -oP 'val cmakeVersion = "\K[^"]+' app/build.gradle.kts)
-          echo "Installing NDK $NDK_VERSION and CMake $CMAKE_VERSION"
-          sdkmanager "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
+        with:
+          packages: 'platform-tools ndk;${{ steps.toolchain.outputs.ndk }} cmake;${{ steps.toolchain.outputs.cmake }}'
+          accept-android-sdk-licenses: true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
